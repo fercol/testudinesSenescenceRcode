@@ -691,19 +691,68 @@ CalcKLc <- function(m1, sd1, m2, sd2) {
 # ==================================================== #
 # ==== FUNCTIONS TO EXTRACT SUMMARY STATS. FROM BASTA:
 # ==================================================== #
+# Function to calculate parallel AR:
+CalcARsumStats <- function(out, ncpus = 4, sxlevs = c(0.5, 0.2),
+                           model = "GO", shape = "simple") {
+  # Ages for ageing rate calculations:
+  dx <- 0.001
+  x <- seq(0, 300, dx)
+  
+  theMat <- out$params
+  if (any(grepl("eta", colnames(theMat)))) {
+    theMat <- theMat[, -grep("eta", colnames(thetMat))]
+  } 
+  nth <- nrow(theMat)
+  iseq <- floor(seq(0, nth, length = ncpus + 1))
+  nsxl <- length(sxlevs)
+  
+  # run parallel estimation:
+  sfInit(parallel = TRUE, cpus = ncpus)
+  
+  # Upload paramDemo:
+  sfLibrary(paramDemo)
+  
+  # export variables:
+  sfExport(list = c("iseq", "sxlevs", "nsxl", "nth", "theMat", "model", "shape",
+                    "x"))
+  
+  # Run parallel function:
+  arparal <- sfClusterApplyLB(1:ncpus, CalcParalAR)
+  
+  # Stop application:
+  sfStop()
+  
+  # Gather estimates:
+  for (jj in 1:ncpus) {
+    if (jj == 1) {
+      arMat <- arparal[[jj]]
+    } else {
+      arMat <- rbind(arMat, arparal[[jj]])
+    }
+  }
+  
+  # Final result:
+  sumAr <- c(Mean = apply(arMat, 2, mean), SD = apply(arMat, 2, sd),
+             Lower = apply(arMat, 2, quantile, 0.025), 
+             Upper = apply(arMat, 2, quantile, 0.975))
+  return(sumAr)
+}
+
+
 # Function to calculate ageing rates from BaSTA outputs in parallel:
 CalcParalAR <- function(sim) {
   idseq <- (iseq[sim] + 1):iseq[sim + 1]
   nseq <- length(idseq)
+  namesAr <- sprintf("AR%s", sxlevs * 100)
   if (model == "EX") {
     arseq <- matrix(0, nseq, nsxl, 
-                    dimnames = list(NULL, c("AR50", "AR20", "AR10", "AR05")))
+                    dimnames = list(NULL, namesAr))
   } else {
     arseq <- t(sapply(idseq, function(ith) {
       theta <- theMat[ith, ]
-      Sxi <- CalcSurv(theta, x = x, model = model, shape = shape)
+      Sxi <- CalcSurv(theta = theta, x = x, model = model, shape = shape)
       ari <- rep(0, nsxl)
-      names(ari) <- c("AR50", "AR20", "AR10", "AR05")
+      names(ari) <- namesAr
       for (ss in 1:nsxl) {
         idsx <- which(abs(Sxi - sxlevs[ss]) ==  min(abs(Sxi - sxlevs[ss])))[1]
         tempar <- CalcAgeingRate(theta, x[idsx], model = model, 
@@ -715,7 +764,6 @@ CalcParalAR <- function(sim) {
   }
   return(arseq)
 }
-
 
 # ================================================ #
 # ==== FUNCTION TO PREPARE DATA FOR ANALYSIS: ====

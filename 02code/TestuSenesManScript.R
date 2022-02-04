@@ -79,14 +79,23 @@ bastaDat <- read.table("03data/tables/testBaSTAData.txt", sep = "\t",
 # ==== BaSTA ANALYSIS: ====
 # ========================= #
 # Run BaSTA on test data for Siler model:
-out <- bastaZIMS(bastaDat, model = "GO", shape = "bathtub", ncpus = 4, nsim = 4,
-                 niter = 21001, burnin = 1000, parallel = TRUE)
+out <- bastaZIMS(bastaDat, model = "GO", shape = "bathtub", ncpus = 4, 
+                 nsim = 4, niter = 21001, burnin = 1000, parallel = TRUE)
 
 # Check goodness of fit:
 plot(out, plot.type = "gof")
 
 # Extract Siler mortality parameters:
 theta <- out$coefficients[, 1]
+
+# Extract summary statistics for life expectancy:
+leSumar <- c(Mean = mean(out$PS$nocov$Ex), SD = sd(out$PS$nocov$Ex),
+             Lower = quantile(out$PS$nocov$Ex, 0.025, names = FALSE),
+             Upper = quantile(out$PS$nocov$Ex, 0.975, names = FALSE))
+
+# Run parallel routine to extract aging rate summary statistics:
+arSumar <- CalcARsumStats(out, ncpus = 4, sxlevs = c(0.5, 0.2), 
+                          model = "GO", shape = "bathtub")
 
 # =================================== #
 # ==== PHYLOGENETIC REGRESSIONS: ====
